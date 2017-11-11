@@ -1,0 +1,59 @@
+version: "2"
+
+services:
+# KeyCloak data volume container
+  keycloak-data:
+    image: library/busybox:latest
+    volumes:
+      - ./keycloak/database:/var/lib/mysql
+      - ./keycloak/driver:/opt/jboss/keycloak/modules/system/layers/keycloak/org/mariadb/jdbc
+      - ./keycloak/logs:/opt/jboss/keycloak/standalone/log
+      - ./keycloak/configuration/standalone.xml:/opt/jboss/keycloak/standalone/configuration/standalone.xml:ro
+
+# MariaDB for KeyCloak
+  keycloak-mariadb:
+    image: library/mariadb:10.2
+    restart: always
+    volumes_from:
+      - keycloak-data
+    expose:
+      - "3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: keycloak
+      MYSQL_USER: keycloak-db
+      MYSQL_PASSWORD: password
+
+# KeyCloak
+  keycloak:
+    image: jboss/keycloak:3.4.0.Final
+    restart: always
+    volumes_from:
+      - keycloak-data
+    links:
+      - keycloak-mariadb
+    expose:
+      - "8080"
+    environment:
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin
+      PROXY_ADDRESS_FORWARDING: "true"
+
+# Reverse proxy data volume container
+  reverseproxy-data:
+    image: library/busybox:latest
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+      - ./nginx/logs:/var/log/nginx
+
+# Reverse proxy
+  reverseproxy:
+    image: library/nginx:latest
+    restart: always
+    volumes_from:
+      - reverseproxy-data
+    links:
+      - keycloak
+    ports:
+      - "80:80"
